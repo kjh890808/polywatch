@@ -410,6 +410,7 @@ function normalizeMarket(m) {
     question: m.question || m.title || m.name || '(제목 없음)',
     volume: m.volume || m.volumeNum || m.volume24hr || null,
     liquidity: m.liquidity || m.liquidityNum || null,
+    conditionId: m.conditionId || m.condition_id || null,
     // events[0].slug = 이벤트 슬러그 (URL에 맞는 값)
     // m.slug = 마켓 슬러그 (다를 수 있음)
     slug: (m.events && m.events[0] && m.events[0].slug)
@@ -617,7 +618,19 @@ function renderMarkets() {
     const fc       = maxP !== null ? fillColor(maxP)  : '#888';
     const pc       = maxP !== null ? probCls(maxP)    : 'prob-amber';
     const slug     = m.slug || m.id || '';
-    const href = slug ? `https://polymarket.com/event/${slug}` : 'https://polymarket.com';
+    // 조건ID 기반 직접 링크 (가장 안정적)
+    const condId = m.conditionId || m.condition_id || '';
+    const eventSlug = (m.events && m.events[0] && m.events[0].slug) || '';
+    let href = 'https://polymarket.com';
+    if (condId) {
+      href = `https://polymarket.com/markets?conditionId=${condId}`;
+    } else if (eventSlug) {
+      href = `https://polymarket.com/event/${eventSlug}`;
+    } else if (slug) {
+      href = `https://polymarket.com/event/${slug}`;
+    } else if (m.question) {
+      href = `https://polymarket.com/markets?search=${encodeURIComponent(m.question.slice(0,80))}`;
+    }
     const vol      = fmtVol(m.volume);
     const liq      = fmtVol(m.liquidity);
 
@@ -710,8 +723,10 @@ async function loadMarkets() {
     // 디버그: 첫 마켓 구조 콘솔 출력
     if (normalized.length > 0) {
       console.log('[PolyWatch] 원본 필드:', Object.keys(data[0]).join(', '));
-      console.log('[PolyWatch] slug 샘플:', normalized.slice(0,3).map(m => m.slug));
-      console.log('[PolyWatch] events 샘플:', data.slice(0,2).map(m => m.events));
+      const s0 = data[0];
+      console.log('[PolyWatch] slug:', s0.slug);
+      console.log('[PolyWatch] groupSlug:', s0.groupSlug);
+      console.log('[PolyWatch] events:', JSON.stringify(s0.events));
     }
     // API의 active=true를 믿고 날짜 필터 제거
     allMarkets = normalized;
