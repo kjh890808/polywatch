@@ -614,12 +614,8 @@ function renderMarkets() {
     const fillW    = maxP !== null ? Math.round(maxP) : 0;
     const fc       = maxP !== null ? fillColor(maxP)  : '#888';
     const pc       = maxP !== null ? probCls(maxP)    : 'prob-amber';
-    // slug: 유니코드 정규화 후 그대로 사용 (João→joao 등)
-    const rawSlug = m.slug || '';
-    const slug = rawSlug.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').toLowerCase();
-    const href = slug.length > 4
-      ? `https://polymarket.com/event/${slug}`
-      : `https://polymarket.com/search?q=${encodeURIComponent(m.question||'')}`;
+    const slug = m.slug || '';
+    const href = slug ? `https://polymarket.com/event/${slug}` : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
     const vol      = fmtVol(m.volume);
     const liq      = fmtVol(m.liquidity);
 
@@ -705,14 +701,14 @@ async function loadMarkets() {
   try {
     // 순차적으로 페이지 fetch (offset 방식)
     const allData = [];
-    const LIMIT = 100;
+    const LIMIT = 50;
     let offset = 0;
     let hasMore = true;
 
     stx.textContent = '데이터 불러오는 중...';
 
     while (hasMore && allData.length < TOTAL_TARGET) {
-      const url = `${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=${LIMIT}&offset=${offset}`;
+      const url = `${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=50&offset=${offset}`;
       try {
         const page = await fetchWithProxy(url);
         if (!page || page.length === 0) { hasMore = false; break; }
@@ -733,6 +729,7 @@ async function loadMarkets() {
       seen.add(m.id); return true;
     });
     console.log('[PolyWatch] 총 마켓 수:', allMarkets.length);
+    console.log('[PolyWatch] slug 샘플 (첫 3개):', allMarkets.slice(0,3).map(m => m.slug));
     detectFlips(allMarkets);
 
     const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours <= URGENT_HOURS; }).length;
