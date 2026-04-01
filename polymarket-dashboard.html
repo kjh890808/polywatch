@@ -410,7 +410,7 @@ function normalizeMarket(m) {
     question: m.question || m.title || m.name || '(제목 없음)',
     volume: m.volume || m.volumeNum || m.volume24hr || null,
     liquidity: m.liquidity || m.liquidityNum || null,
-    slug: m.slug || m.market_slug || String(m.id || ''),
+    slug: m.slug || m.groupSlug || m.group_slug || m.market_slug || String(m.id || ''),
   };
 }
 
@@ -614,7 +614,7 @@ function renderMarkets() {
     const fc       = maxP !== null ? fillColor(maxP)  : '#888';
     const pc       = maxP !== null ? probCls(maxP)    : 'prob-amber';
     const slug     = m.slug || m.id || '';
-    const href     = slug ? `https://polymarket.com/event/${slug}` : 'https://polymarket.com';
+    const href     = slug ? `https://polymarket.com/event/${encodeURIComponent(slug).replace(/%2F/g,'/')}` : 'https://polymarket.com';
     const vol      = fmtVol(m.volume);
     const liq      = fmtVol(m.liquidity);
 
@@ -706,8 +706,8 @@ async function loadMarkets() {
     const normalized = data.map(normalizeMarket);
     // 디버그: 첫 마켓 구조 콘솔 출력
     if (normalized.length > 0) {
-      console.log('[PolyWatch] 첫 마켓 샘플:', JSON.stringify(normalized[0], null, 2));
       console.log('[PolyWatch] 원본 필드:', Object.keys(data[0]).join(', '));
+      console.log('[PolyWatch] slug 샘플:', normalized.slice(0,3).map(m => m.slug));
     }
     // API의 active=true를 믿고 날짜 필터 제거
     allMarkets = normalized;
