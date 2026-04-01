@@ -411,10 +411,7 @@ function normalizeMarket(m) {
     volume: m.volume || m.volumeNum || m.volume24hr || null,
     liquidity: m.liquidity || m.liquidityNum || null,
     conditionId: m.conditionId || m.condition_id || null,
-    // events[0].slug = 이벤트 슬러그 (URL에 맞는 값)
-    // m.slug = 마켓 슬러그 (다를 수 있음)
-    slug: (m.events && m.events[0] && m.events[0].slug)
-          || m.groupSlug || m.group_slug || m.slug || m.market_slug || String(m.id || ''),
+    slug: m.slug || m.groupSlug || m.group_slug || m.market_slug || null,
   };
 }
 
@@ -617,20 +614,12 @@ function renderMarkets() {
     const fillW    = maxP !== null ? Math.round(maxP) : 0;
     const fc       = maxP !== null ? fillColor(maxP)  : '#888';
     const pc       = maxP !== null ? probCls(maxP)    : 'prob-amber';
-    const slug     = m.slug || m.id || '';
-    // 조건ID 기반 직접 링크 (가장 안정적)
-    const condId = m.conditionId || m.condition_id || '';
-    const eventSlug = (m.events && m.events[0] && m.events[0].slug) || '';
-    let href = 'https://polymarket.com';
-    if (condId) {
-      href = `https://polymarket.com/markets?conditionId=${condId}`;
-    } else if (eventSlug) {
-      href = `https://polymarket.com/event/${eventSlug}`;
-    } else if (slug) {
-      href = `https://polymarket.com/event/${slug}`;
-    } else if (m.question) {
-      href = `https://polymarket.com/markets?search=${encodeURIComponent(m.question.slice(0,80))}`;
-    }
+    // slug: 유니코드 정규화 후 그대로 사용 (João→joao 등)
+    const rawSlug = m.slug || '';
+    const slug = rawSlug.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').toLowerCase();
+    const href = slug.length > 4
+      ? `https://polymarket.com/event/${slug}`
+      : `https://polymarket.com/search?q=${encodeURIComponent(m.question||'')}`;
     const vol      = fmtVol(m.volume);
     const liq      = fmtVol(m.liquidity);
 
