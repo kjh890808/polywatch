@@ -614,8 +614,11 @@ function renderMarkets() {
     const fillW    = maxP !== null ? Math.round(maxP) : 0;
     const fc       = maxP !== null ? fillColor(maxP)  : '#888';
     const pc       = maxP !== null ? probCls(maxP)    : 'prob-amber';
-    const slug = m.slug || '';
-    const href = slug ? `https://polymarket.com/event/${slug}` : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
+    // groupSlug = 이벤트 슬러그 (URL에 맞음), slug = 마켓 슬러그 (URL 안 맞음)
+    const eventSlug = m.groupSlug || m.group_slug || m.slug || '';
+    const href = eventSlug
+      ? `https://polymarket.com/event/${eventSlug}`
+      : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
     const vol      = fmtVol(m.volume);
     const liq      = fmtVol(m.liquidity);
 
