@@ -696,53 +696,52 @@ const MARKETS_API = 'https://gamma-api.polymarket.com/markets';
 const EVENTS_API   = 'https://gamma-api.polymarket.com/events';
 const TOTAL_TARGET = 300;
 
-// 성공한 프록시 기억 (세션 동안 재사용)
-let workingProxy = null;
+// 프록시 목록 (순서대로 시도)
+const PROXY_LIST = [
+  { fn: enc => `https://api.codetabs.com/v1/proxy?quest=${enc}`,   wrap: j => j },
+  { fn: enc => `https://api.allorigins.win/raw?url=${enc}`,         wrap: j => j },
+  { fn: enc => `https://corsproxy.io/?${enc}`,                      wrap: j => j },
+  { fn: enc => `https://api.allorigins.win/get?url=${enc}`,         wrap: j => JSON.parse(j.contents) },
+];
+let proxyIdx = 0; // 작동하는 프록시 인덱스 기억
 
-async function fetchWithProxy(url) {
+async function tryOneProxy(p, url) {
   const enc = encodeURIComponent(url);
+  const res = await fetch(p.fn(enc), { signal: AbortSignal.timeout(7000) });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  const data = p.wrap(json);
+  if (!Array.isArray(data)) throw new Error('not array');
+  return data;
+}
 
-  // 이전에 성공한 프록시 먼저 시도
-  if (workingProxy) {
+// 처음 한 번만 작동하는 프록시 탐색
+async function findProxy(testUrl) {
+  for (let i = 0; i < PROXY_LIST.length; i++) {
     try {
-      const proxyUrl = workingProxy.replace('__URL__', enc);
-      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-      if (res.ok) {
-        const json = await res.json();
-        const data = Array.isArray(json) ? json : (json.contents ? JSON.parse(json.contents) : null);
-        if (Array.isArray(data) && data.length > 0) return data;
-      }
-    } catch(e) {
-      workingProxy = null; // 실패하면 리셋
-    }
-  }
-
-  // 프록시 목록 (codetabs 먼저 — 실제로 잘 됨)
-  const proxies = [
-    { url: `https://api.codetabs.com/v1/proxy?quest=${enc}`,          wrap: j => j },
-    { url: `https://api.allorigins.win/raw?url=${enc}`,               wrap: j => j },
-    { url: `https://api.allorigins.win/get?url=${enc}`,               wrap: j => JSON.parse(j.contents) },
-    { url: `https://corsproxy.io/?${enc}`,                            wrap: j => j },
-    { url: url,                                                        wrap: j => j },
-  ];
-
-  for (const p of proxies) {
-    try {
-      const res = await fetch(p.url, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) continue;
-      const json = await res.json();
-      const data = p.wrap(json);
-      if (Array.isArray(data) && data.length > 0) {
-        // 성공한 패턴 기억
-        workingProxy = p.url.replace(enc, '__URL__');
-        console.log('[PolyWatch] 성공:', p.url.split('?')[0]);
+      const data = await tryOneProxy(PROXY_LIST[i], testUrl);
+      if (data.length > 0) {
+        proxyIdx = i;
+        console.log('[PolyWatch] 프록시 확정:', PROXY_LIST[i].fn('...').split('?')[0]);
         return data;
       }
     } catch(e) {
-      console.log('[PolyWatch] 실패:', p.url.split('?')[0], e.message);
+      console.log('[PolyWatch] 프록시 실패:', PROXY_LIST[i].fn('...').split('?')[0], e.message);
     }
   }
   throw new Error('모든 프록시 실패');
+}
+
+async function fetchWithProxy(url) {
+  // 이미 작동하는 프록시 알면 바로 사용
+  try {
+    const data = await tryOneProxy(PROXY_LIST[proxyIdx], url);
+    if (data.length > 0) return data;
+  } catch(e) {
+    console.log('[PolyWatch] 기존 프록시 실패, 재탐색...');
+  }
+  // 실패하면 다시 탐색
+  return findProxy(url);
 }
 
 async function loadMarkets() {
@@ -754,18 +753,23 @@ async function loadMarkets() {
   stx.textContent = '불러오는 중...';
 
   try {
-    // 병렬 fetch — offset 0,50,100,150,200,250 동시 요청
-    stx.textContent = '데이터 불러오는 중...';
+    stx.textContent = '프록시 탐색 중...';
     const LIMIT = 50;
-    const offsets = [0, 50, 100, 150, 200, 250];
-    const pages = await Promise.allSettled(
-      offsets.map(off =>
-        fetchWithProxy(`${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=${LIMIT}&offset=${off}`)
-      )
+    const baseUrl = `${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=${LIMIT}`;
+
+    // 1) 첫 페이지로 프록시 탐색
+    const firstPage = await findProxy(baseUrl + '&offset=0');
+    stx.textContent = `${firstPage.length}개 확인, 나머지 불러오는 중...`;
+
+    // 2) 나머지 페이지 병렬 fetch (이미 프록시 확정됐으므로 빠름)
+    const offsets = [50, 100, 150, 200, 250];
+    const restPages = await Promise.allSettled(
+      offsets.map(off => fetchWithProxy(baseUrl + `&offset=${off}`))
     );
-    const allData = pages
-      .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
-      .flatMap(r => r.value);
+    const allData = [
+      ...firstPage,
+      ...restPages.filter(r => r.status === 'fulfilled' && Array.isArray(r.value)).flatMap(r => r.value)
+    ];
 
     const normalized = allData.map(normalizeMarket);
     const seen = new Set();
