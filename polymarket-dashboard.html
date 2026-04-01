@@ -663,9 +663,7 @@ function renderMarkets() {
 
 /* ─ LOAD ─ */
 const API_BASE = 'https://gamma-api.polymarket.com/markets';
-const API_PARAMS = '?closed=false&active=true&order=endDate&ascending=true&limit=50';
-const API_URL = API_BASE + API_PARAMS;
-const TOTAL_PAGES = 6; // 50 x 6 = 최대 300개
+const TOTAL_TARGET = 300;
 
 async function tryFetch(url, wrapFn) {
   const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
@@ -716,15 +714,30 @@ async function loadMarkets() {
   stx.textContent = '불러오는 중...';
 
   try {
-    // 50개씩 병렬 fetch → 최대 300개
-    const pages = Array.from({length: TOTAL_PAGES}, (_, i) =>
-      fetchWithProxy(API_URL + '&offset=' + (i * 50)).catch(() => [])
-    );
-    const results = await Promise.all(pages);
-    const data = results.flat();
+    // 순차적으로 페이지 fetch (offset 방식)
+    const allData = [];
+    const LIMIT = 100;
+    let offset = 0;
+    let hasMore = true;
 
-    const normalized = data.map(normalizeMarket);
-    // 중복 제거
+    stx.textContent = '데이터 불러오는 중...';
+
+    while (hasMore && allData.length < TOTAL_TARGET) {
+      const url = `${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=${LIMIT}&offset=${offset}`;
+      try {
+        const page = await fetchWithProxy(url);
+        if (!page || page.length === 0) { hasMore = false; break; }
+        allData.push(...page);
+        offset += page.length;
+        hasMore = page.length === LIMIT;
+        stx.textContent = `${allData.length}개 불러오는 중...`;
+      } catch(e) {
+        console.log('[PolyWatch] 페이지 오류 offset=' + offset, e.message);
+        break;
+      }
+    }
+
+    const normalized = allData.map(normalizeMarket);
     const seen = new Set();
     allMarkets = normalized.filter(m => {
       if (seen.has(m.id)) return false;
