@@ -646,43 +646,49 @@ function renderMarkets() {
 }
 
 /* ─ LOAD ─ */
-const API_URL = 'https://gamma-api.polymarket.com/markets?closed=false&active=true&order=endDate&ascending=true&limit=200';
+// limit을 50으로 줄여서 프록시 413 오류 방지 (필요시 여러 번 호출)
+const API_BASE = 'https://gamma-api.polymarket.com/markets';
+const API_PARAMS = '?closed=false&active=true&order=endDate&ascending=true&limit=50';
+const API_URL = API_BASE + API_PARAMS;
 
-async function tryFetch(proxyUrl, wrapFn) {
-  const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
-  if (!res.ok) throw new Error('status ' + res.status);
+async function tryFetch(url, wrapFn) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
   const json = await res.json();
-  return wrapFn ? wrapFn(json) : json;
+  const data = wrapFn ? wrapFn(json) : json;
+  if (!Array.isArray(data)) throw new Error('not array');
+  return data;
 }
 
 async function fetchWithProxy(url) {
   const enc = encodeURIComponent(url);
   const attempts = [
-    // 1) 직접
-    () => tryFetch(url),
-    // 2) corsproxy.io — ?URL 형식 (인코딩 없음)
-    () => tryFetch(`https://corsproxy.io/?${url}`),
-    // 3) allorigins raw
-    () => tryFetch(`https://api.allorigins.win/raw?url=${enc}`),
-    // 4) codetabs
-    () => tryFetch(`https://api.codetabs.com/v1/proxy?quest=${enc}`),
-    // 5) allorigins get (wrapped)
-    () => tryFetch(`https://api.allorigins.win/get?url=${enc}`, j => JSON.parse(j.contents)),
-    // 6) corsproxy.io encoded
-    () => tryFetch(`https://corsproxy.io/?${enc}`),
-    // 7) jsonp.afeld
-    () => tryFetch(`https://jsonp.afeld.me/?url=${enc}`, j => j),
+    // 1) allorigins raw — 413 없음, 가장 안정적
+    [`https://api.allorigins.win/raw?url=${enc}`],
+    // 2) codetabs — GitHub Pages에서 잘 됨
+    [`https://api.codetabs.com/v1/proxy?quest=${enc}`],
+    // 3) allorigins get (wrapped)
+    [`https://api.allorigins.win/get?url=${enc}`, j => JSON.parse(j.contents)],
+    // 4) 직접 (배포 환경)
+    [url],
+    // 5) corsproxy.io (작은 요청만 가능)
+    [`https://corsproxy.io/?${enc}`],
   ];
 
   const errors = [];
-  for (const attempt of attempts) {
+  for (const [proxyUrl, wrapFn] of attempts) {
     try {
-      const data = await attempt();
-      if (Array.isArray(data) && data.length > 0) return data;
-      errors.push('empty response');
-    } catch (e) { errors.push(e.message); }
+      const data = await tryFetch(proxyUrl, wrapFn);
+      if (data.length > 0) {
+        console.log('[PolyWatch] 성공 프록시:', proxyUrl.split('?')[0]);
+        return data;
+      }
+    } catch (e) {
+      errors.push(e.message);
+      console.log('[PolyWatch] 실패:', proxyUrl.split('?')[0], e.message);
+    }
   }
-  throw new Error('모든 프록시 실패 (' + errors.slice(0,3).join(', ') + ')');
+  throw new Error('모든 프록시 실패: ' + errors.join(' / '));
 }
 
 async function loadMarkets() {
