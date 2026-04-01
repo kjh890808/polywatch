@@ -662,10 +662,10 @@ function renderMarkets() {
 }
 
 /* ─ LOAD ─ */
-// limit을 50으로 줄여서 프록시 413 오류 방지 (필요시 여러 번 호출)
 const API_BASE = 'https://gamma-api.polymarket.com/markets';
 const API_PARAMS = '?closed=false&active=true&order=endDate&ascending=true&limit=50';
 const API_URL = API_BASE + API_PARAMS;
+const TOTAL_PAGES = 6; // 50 x 6 = 최대 300개
 
 async function tryFetch(url, wrapFn) {
   const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
@@ -716,20 +716,21 @@ async function loadMarkets() {
   stx.textContent = '불러오는 중...';
 
   try {
-    const data = await fetchWithProxy(API_URL);
+    // 50개씩 병렬 fetch → 최대 300개
+    const pages = Array.from({length: TOTAL_PAGES}, (_, i) =>
+      fetchWithProxy(API_URL + '&offset=' + (i * 50)).catch(() => [])
+    );
+    const results = await Promise.all(pages);
+    const data = results.flat();
 
-    // 필드명 정규화 후 필터링
     const normalized = data.map(normalizeMarket);
-    // 디버그: 첫 마켓 구조 콘솔 출력
-    if (normalized.length > 0) {
-      console.log('[PolyWatch] 원본 필드:', Object.keys(data[0]).join(', '));
-      const s0 = data[0];
-      console.log('[PolyWatch] slug:', s0.slug);
-      console.log('[PolyWatch] groupSlug:', s0.groupSlug);
-      console.log('[PolyWatch] events:', JSON.stringify(s0.events));
-    }
-    // API의 active=true를 믿고 날짜 필터 제거
-    allMarkets = normalized;
+    // 중복 제거
+    const seen = new Set();
+    allMarkets = normalized.filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id); return true;
+    });
+    console.log('[PolyWatch] 총 마켓 수:', allMarkets.length);
     detectFlips(allMarkets);
 
     const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours <= URGENT_HOURS; }).length;
