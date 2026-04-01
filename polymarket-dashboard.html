@@ -400,19 +400,39 @@ const tabLabels = {
 
 /* ─ UTILS ─ */
 const tryParse = s => { if (!s) return null; if (Array.isArray(s)) return s; try { return JSON.parse(s); } catch { return null; } };
-const getProbs = m => (tryParse(m.outcomePrices) || []).map(p => parseFloat(p) * 100);
+
+function normalizeMarket(m) {
+  return {
+    ...m,
+    endDate: m.endDate || m.end_date || m.endDateIso || m.end_date_iso || m.expirationDate || m.expiration_date || null,
+    outcomePrices: m.outcomePrices || m.outcome_prices || m.prices || null,
+    outcomes: m.outcomes || m.outcome_labels || m.options || null,
+    question: m.question || m.title || m.name || '(제목 없음)',
+    volume: m.volume || m.volumeNum || m.volume24hr || null,
+    liquidity: m.liquidity || m.liquidityNum || null,
+    slug: m.slug || m.market_slug || String(m.id || ''),
+  };
+}
+
+const getProbs = m => {
+  const raw = tryParse(m.outcomePrices) || [];
+  return raw.map(p => { const v = parseFloat(p); return v <= 1 ? v * 100 : v; });
+};
 const getMax   = ps => ps.length ? Math.max(...ps) : null;
 const getTopI  = ps => ps.length ? ps.reduce((b, p, i) => p > ps[b] ? i : b, 0) : -1;
 const fmtTime  = d  => `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
 const fmtVol   = v  => {
   if (!v) return null;
   const n = parseFloat(v);
+  if (isNaN(n) || n <= 0) return null;
   return n >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M' : n >= 1e3 ? '$'+Math.round(n/1e3)+'K' : '$'+Math.round(n);
 };
 
 function timeLeft(str) {
-  const diff  = new Date(str) - new Date();
-  if (diff <= 0) return { text: '마감됨',                          cls: 'deadline-urgent', cardCls: 'urgent', hours: -1 };
+  if (!str) return { text: '날짜 미정', cls: 'deadline-normal', cardCls: '', hours: 9999 };
+  const diff = new Date(str) - new Date();
+  if (isNaN(diff)) return { text: '날짜 오류', cls: 'deadline-normal', cardCls: '', hours: 9999 };
+  if (diff <= 0) return { text: '마감됨', cls: 'deadline-urgent', cardCls: 'urgent', hours: -1 };
   const hours = diff / 3600000;
   const days  = Math.floor(hours / 24);
   const h     = Math.floor(hours % 24);
@@ -676,7 +696,18 @@ async function loadMarkets() {
   try {
     const data = await fetchWithProxy(API_URL);
 
-    allMarkets = data.filter(m => m.endDate && new Date(m.endDate) > new Date());
+    // 필드명 정규화 후 필터링
+    const normalized = data.map(normalizeMarket);
+    // 디버그: 첫 마켓 구조 콘솔 출력
+    if (normalized.length > 0) {
+      console.log('[PolyWatch] 첫 마켓 샘플:', JSON.stringify(normalized[0], null, 2));
+      console.log('[PolyWatch] 원본 필드:', Object.keys(data[0]).join(', '));
+    }
+    allMarkets = normalized.filter(m => {
+      if (!m.endDate) return true;
+      const d = new Date(m.endDate);
+      return !isNaN(d) && d > new Date();
+    });
     detectFlips(allMarkets);
 
     const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours >= 0 && t.hours < URGENT_HOURS; }).length;
