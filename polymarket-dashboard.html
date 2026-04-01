@@ -378,6 +378,7 @@
 const HIGH_PROB       = 90;   // 고확률 기준 (%)
 const URGENT_HOURS    = 24;   // 마감 임박 기준 (시간)
 const FLIP_THRESHOLD  = 10;   // 플립 감지 변동폭 (%)
+const TRANSLATE_BATCH = 10;   // 한 번에 번역할 개수
 const REFRESH_MS      = 5 * 60 * 1000; // 5분
 
 /* ─ STATE ─ */
@@ -389,6 +390,8 @@ let flippedIds  = new Set();
 let flipLog     = [];
 let totalFlips  = 0;
 let isFirst     = true;
+let translations = {};   // id → 한국어 질문 캐시
+let isTranslating = false;
 
 const tabLabels = {
   urgent : '24시간 이내 마감',
@@ -411,7 +414,7 @@ function normalizeMarket(m) {
     volume: m.volume || m.volumeNum || m.volume24hr || null,
     liquidity: m.liquidity || m.liquidityNum || null,
     conditionId: m.conditionId || m.condition_id || null,
-    slug: m.slug || m.groupSlug || m.group_slug || m.market_slug || null,
+    slug: m._eventSlug || m.groupSlug || m.group_slug || m.slug || null,
   };
 }
 
@@ -614,14 +617,15 @@ function renderMarkets() {
     const fillW    = maxP !== null ? Math.round(maxP) : 0;
     const fc       = maxP !== null ? fillColor(maxP)  : '#888';
     const pc       = maxP !== null ? probCls(maxP)    : 'prob-amber';
-    // groupSlug = 이벤트 슬러그 (URL에 맞음), slug = 마켓 슬러그 (URL 안 맞음)
-    const eventSlug = m.groupSlug || m.group_slug || m.slug || '';
+    const eventSlug = m.slug || '';
     const href = eventSlug
       ? `https://polymarket.com/event/${eventSlug}`
       : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
     const vol      = fmtVol(m.volume);
     const liq      = fmtVol(m.liquidity);
 
+    // 번역된 질문 사용 (없으면 원문)
+    const question = translations[m.id] || m.question || '—';
     const chips = outcomes.slice(0,5).map((o,i) => {
       const p  = probs[i] !== undefined ? Math.round(probs[i]) : 0;
       const cl = i === topI ? 'top' : p < 10 ? 'low' : '';
@@ -632,7 +636,7 @@ function renderMarkets() {
         href="${href}" target="_blank" rel="noopener">
       ${isFlip ? '<div class="flip-tag">⚠ 확률 플립 감지됨</div>' : ''}
       <div class="card-top">
-        <div class="card-question">${m.question||'—'}</div>
+        <div class="card-question">${question}</div>
         <div class="prob-badge ${pc}">${probDisp}</div>
       </div>
       <div class="outcomes">${chips}</div>
@@ -650,7 +654,8 @@ function renderMarkets() {
 }
 
 /* ─ LOAD ─ */
-const API_BASE = 'https://gamma-api.polymarket.com/markets';
+const MARKETS_API = 'https://gamma-api.polymarket.com/markets';
+const EVENTS_API   = 'https://gamma-api.polymarket.com/events';
 const TOTAL_TARGET = 300;
 
 async function tryFetch(url, wrapFn) {
@@ -702,37 +707,45 @@ async function loadMarkets() {
   stx.textContent = '불러오는 중...';
 
   try {
-    // 순차적으로 페이지 fetch (offset 방식)
-    const allData = [];
+    // /events API로 순차 fetch — slug가 이벤트 슬러그라 URL 정확함
+    const allEvents = [];
     const LIMIT = 50;
     let offset = 0;
     let hasMore = true;
 
     stx.textContent = '데이터 불러오는 중...';
 
-    while (hasMore && allData.length < TOTAL_TARGET) {
-      const url = `${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=50&offset=${offset}`;
+    while (hasMore && allEvents.length < TOTAL_TARGET) {
+      const url = `${EVENTS_API}?closed=false&active=true&order=startDate&ascending=false&limit=${LIMIT}&offset=${offset}`;
       try {
         const page = await fetchWithProxy(url);
         if (!page || page.length === 0) { hasMore = false; break; }
-        allData.push(...page);
+        allEvents.push(...page);
         offset += page.length;
         hasMore = page.length === LIMIT;
-        stx.textContent = `${allData.length}개 불러오는 중...`;
+        stx.textContent = `${allEvents.length}개 이벤트 불러오는 중...`;
       } catch(e) {
-        console.log('[PolyWatch] 페이지 오류 offset=' + offset, e.message);
+        console.log('[PolyWatch] 페이지 오류', e.message);
         break;
       }
     }
 
-    const normalized = allData.map(normalizeMarket);
+    // 각 이벤트 안의 markets 배열을 펼치고 이벤트 slug 붙이기
+    const allMarketRaw = [];
+    for (const ev of allEvents) {
+      const mkts = Array.isArray(ev.markets) ? ev.markets : [];
+      for (const mk of mkts) {
+        allMarketRaw.push({ ...mk, _eventSlug: ev.slug, _eventTitle: ev.title });
+      }
+    }
+
     const seen = new Set();
-    allMarkets = normalized.filter(m => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id); return true;
-    });
-    console.log('[PolyWatch] 총 마켓 수:', allMarkets.length);
-    console.log('[PolyWatch] slug 샘플 (첫 3개):', allMarkets.slice(0,3).map(m => m.slug));
+    allMarkets = allMarketRaw
+      .map(m => normalizeMarket(m))
+      .filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+
+    console.log('[PolyWatch] 이벤트:', allEvents.length, '마켓:', allMarkets.length);
+    console.log('[PolyWatch] slug 샘플:', allMarkets.slice(0,3).map(m => m.slug));
     detectFlips(allMarkets);
 
     const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours <= URGENT_HOURS; }).length;
@@ -746,6 +759,8 @@ async function loadMarkets() {
     dot.className   = 'status-dot live';
     stx.textContent = `업데이트 ${fmtTime(now)}`;
     renderMarkets();
+    // 번역은 백그라운드에서 진행 (화면 막지 않음)
+    translateMarkets(allMarkets);
   } catch (e) {
     dot.className   = 'status-dot error';
     stx.textContent = '오류';
