@@ -332,7 +332,7 @@
       <div class="stat-sub">매우 임박</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">고확률 90%+</div>
+      <div class="stat-label">고확률 80%+</div>
       <div class="stat-value green" id="stat-high">—</div>
       <div class="stat-sub">거의 확실</div>
     </div>
@@ -745,45 +745,26 @@ async function loadMarkets() {
   stx.textContent = '불러오는 중...';
 
   try {
-    // /events API로 순차 fetch — slug가 이벤트 슬러그라 URL 정확함
-    const allEvents = [];
-    const LIMIT = 50;
-    let offset = 0;
-    let hasMore = true;
-
+    // 병렬 fetch — offset 0,50,100,150,200,250 동시 요청
     stx.textContent = '데이터 불러오는 중...';
+    const LIMIT = 50;
+    const offsets = [0, 50, 100, 150, 200, 250];
+    const pages = await Promise.allSettled(
+      offsets.map(off =>
+        fetchWithProxy(`${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=${LIMIT}&offset=${off}`)
+      )
+    );
+    const allData = pages
+      .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
+      .flatMap(r => r.value);
 
-    while (hasMore && allEvents.length < TOTAL_TARGET) {
-      const url = `${EVENTS_API}?closed=false&active=true&order=startDate&ascending=false&limit=${LIMIT}&offset=${offset}`;
-      try {
-        const page = await fetchWithProxy(url);
-        if (!page || page.length === 0) { hasMore = false; break; }
-        allEvents.push(...page);
-        offset += page.length;
-        hasMore = page.length === LIMIT;
-        stx.textContent = `${allEvents.length}개 이벤트 불러오는 중...`;
-      } catch(e) {
-        console.log('[PolyWatch] 페이지 오류', e.message);
-        break;
-      }
-    }
-
-    // 각 이벤트 안의 markets 배열을 펼치고 이벤트 slug 붙이기
-    const allMarketRaw = [];
-    for (const ev of allEvents) {
-      const mkts = Array.isArray(ev.markets) ? ev.markets : [];
-      for (const mk of mkts) {
-        allMarketRaw.push({ ...mk, _eventSlug: ev.slug, _eventTitle: ev.title });
-      }
-    }
-
+    const normalized = allData.map(normalizeMarket);
     const seen = new Set();
-    allMarkets = allMarketRaw
-      .map(m => normalizeMarket(m))
-      .filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
-
-    console.log('[PolyWatch] 이벤트:', allEvents.length, '마켓:', allMarkets.length);
-    console.log('[PolyWatch] slug 샘플:', allMarkets.slice(0,3).map(m => m.slug));
+    allMarkets = normalized.filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id); return true;
+    });
+    console.log('[PolyWatch] 총 마켓 수:', allMarkets.length);
     detectFlips(allMarkets);
 
     const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours <= URGENT_HOURS; }).length;
