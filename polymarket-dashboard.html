@@ -345,7 +345,7 @@
 
   <div class="filter-bar">
     <button class="tab-btn active" data-tab="urgent" onclick="switchTab(this)">🔴 24h 마감</button>
-    <button class="tab-btn" data-tab="high"    onclick="switchTab(this)">🟢 90%+ 고확률</button>
+    <button class="tab-btn" data-tab="high"    onclick="switchTab(this)">🟢 80%+ 고확률</button>
     <button class="tab-btn" data-tab="both"    onclick="switchTab(this)">⚡ 임박+고확률</button>
     <button class="tab-btn amber-tab" data-tab="flipped" onclick="switchTab(this)">⚠️ 플립 감지</button>
     <button class="tab-btn" data-tab="all"     onclick="switchTab(this)">전체</button>
@@ -375,7 +375,7 @@
 
 <script>
 /* ─ CONFIG ─ */
-const HIGH_PROB       = 90;   // 고확률 기준 (%)
+const HIGH_PROB       = 80;   // 고확률 기준 (%)
 const URGENT_HOURS    = 24;   // 마감 임박 기준 (시간)
 const FLIP_THRESHOLD  = 10;   // 플립 감지 변동폭 (%)
 const TRANSLATE_BATCH = 10;   // 한 번에 번역할 개수
@@ -419,8 +419,14 @@ function normalizeMarket(m) {
 }
 
 const getProbs = m => {
-  const raw = tryParse(m.outcomePrices) || [];
-  return raw.map(p => { const v = parseFloat(p); return v <= 1 ? v * 100 : v; });
+  const raw = tryParse(m.outcomePrices);
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr.map(p => {
+    const v = parseFloat(p);
+    if (isNaN(v)) return 0;
+    return v <= 1 ? v * 100 : v;
+  });
 };
 const getMax   = ps => ps.length ? Math.max(...ps) : null;
 const getTopI  = ps => ps.length ? ps.reduce((b, p, i) => p > ps[b] ? i : b, 0) : -1;
@@ -554,6 +560,38 @@ async function toggleAlerts() {
     btn.classList.remove('bell-on');
     label.textContent = '알람 켜기';
   }
+}
+
+/* ─ TRANSLATION ─ */
+let translations = {};
+let isTranslating = false;
+
+async function translateText(text) {
+  try {
+    const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=' + encodeURIComponent(text);
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const json = await res.json();
+    if (json && json[0]) {
+      const t = json[0].map(x => x && x[0]).filter(Boolean).join('');
+      if (t && t !== text) return t;
+    }
+  } catch(e) {}
+  return text;
+}
+
+async function translateMarkets(markets) {
+  if (isTranslating) return;
+  isTranslating = true;
+  const untranslated = markets.filter(m => m.question && !translations[m.id]);
+  for (let i = 0; i < untranslated.length; i += 8) {
+    const batch = untranslated.slice(i, i + 8);
+    await Promise.all(batch.map(async m => {
+      translations[m.id] = await translateText(m.question);
+    }));
+    renderMarkets();
+    if (i + 8 < untranslated.length) await new Promise(r => setTimeout(r, 400));
+  }
+  isTranslating = false;
 }
 
 /* ─ TAB / RENDER ─ */
