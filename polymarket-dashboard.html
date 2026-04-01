@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PolyWatch 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0f11;
+    --surface: #161719;
+    --surface2: #1d1f22;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8e9ea;
+    --text2: #8a8d92;
+    --text3: #55585e;
+    --green: #1fcb8a;
+    --green-dim: rgba(31,203,138,0.1);
+    --amber: #f5a623;
+    --amber-dim: rgba(245,166,35,0.1);
+    --red: #ff5454;
+    --red-dim: rgba(255,84,84,0.09);
+    --blue: #4e9eff;
+    --blue-dim: rgba(78,158,255,0.1);
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'IBM Plex Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,15,17,0.88);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+  }
+  .header-inner {
+    max-width: 1100px; margin: 0 auto;
+    height: 56px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .logo-icon {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--green); display: flex; align-items: center; justify-content: center;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: #000;
+  }
+  .logo-name { font-size: 15px; font-weight: 500; color: var(--text); }
+  .logo-name span { color: var(--green); }
+
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--text3); background: var(--surface);
+    padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text3); flex-shrink: 0;
+  }
+  .status-dot.live { background: var(--green); animation: blink 2s ease-in-out infinite; }
+  .status-dot.error { background: var(--red); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .icon-btn {
+    font-size: 12px; padding: 6px 13px; border-radius: var(--radius);
+    border: 1px solid var(--border2); background: transparent;
+    color: var(--text2); cursor: pointer; transition: all 0.15s;
+    font-family: 'IBM Plex Mono', monospace;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); }
+  .icon-btn:disabled { opacity: 0.35; cursor: default; }
+  .icon-btn.bell-on { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
+
+  /* ── FLIP ALERT BANNER ── */
+  .alert-banner {
+    background: rgba(245,166,35,0.07);
+    border: 1px solid rgba(245,166,35,0.3);
+    border-radius: var(--radius-lg);
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+  .alert-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+  }
+  .alert-title {
+    font-size: 12px; font-weight: 500; font-family: 'IBM Plex Mono', monospace;
+    color: var(--amber); letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .alert-clear {
+    font-size: 11px; color: var(--text3); background: none;
+    border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.15s;
+  }
+  .alert-clear:hover { color: var(--text); }
+  .alert-list { display: flex; flex-direction: column; gap: 6px; }
+  .alert-item {
+    font-size: 12px; color: var(--text2);
+    background: rgba(0,0,0,0.2); border-radius: 8px;
+    padding: 10px 12px; line-height: 1.5;
+  }
+  .alert-item-q { color: var(--text); font-size: 13px; margin-bottom: 3px; }
+  .flip-arrow { color: var(--amber); margin: 0 5px; }
+  .alert-time { color: var(--text3); font-size: 10px; font-family: 'IBM Plex Mono', monospace; margin-top: 3px; }
+
+  /* ── MAIN ── */
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 80px; }
+
+  /* ── STATS ── */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 10px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 16px 18px; transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-label {
+    font-size: 10px; color: var(--text3); letter-spacing: 0.8px;
+    text-transform: uppercase; margin-bottom: 8px; font-family: 'IBM Plex Mono', monospace;
+  }
+  .stat-value { font-size: 26px; font-weight: 500; color: var(--text); line-height: 1; }
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+  .stat-value.red   { color: var(--red); }
+  .stat-sub { font-size: 10px; color: var(--text3); margin-top: 5px; }
+
+  /* ── FILTER BAR ── */
+  .filter-bar {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .tab-btn {
+    font-size: 13px; padding: 7px 16px; border-radius: 999px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text2); cursor: pointer; transition: all 0.15s;
+    font-family: 'IBM Plex Sans KR', sans-serif;
+  }
+  .tab-btn:hover { border-color: var(--border2); color: var(--text); }
+  .tab-btn.active { background: var(--green); border-color: var(--green); color: #000; font-weight: 500; }
+  .tab-btn.amber-tab.active { background: var(--amber); border-color: var(--amber); color: #000; }
+  .filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+  .sort-select {
+    font-size: 12px; padding: 7px 12px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text2); cursor: pointer; outline: none;
+    font-family: 'IBM Plex Mono', monospace; margin-left: auto;
+  }
+
+  /* ── SECTION HEADER ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: 11px; color: var(--text3); letter-spacing: 0.6px;
+    text-transform: uppercase; font-family: 'IBM Plex Mono', monospace;
+  }
+  .count-badge {
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--text3); background: var(--surface2); padding: 2px 8px; border-radius: 999px;
+  }
+
+  /* ── MARKET CARDS ── */
+  .market-list { display: flex; flex-direction: column; gap: 8px; }
+  .market-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 16px 20px;
+    cursor: pointer; transition: all 0.15s;
+    text-decoration: none; display: block;
+    position: relative; overflow: hidden;
+  }
+  .market-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: transparent; transition: background 0.15s;
+  }
+  .market-card:hover { border-color: var(--border2); background: var(--surface2); }
+  .market-card:hover::before { background: var(--green); }
+  .market-card.urgent::before { background: var(--red); }
+  .market-card.soon::before   { background: var(--amber); }
+  .market-card.flipped { border-color: rgba(245,166,35,0.35); }
+  .market-card.flipped::before { background: var(--amber) !important; }
+
+  .flip-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-family: 'IBM Plex Mono', monospace; font-weight: 500;
+    color: var(--amber); background: var(--amber-dim);
+    border: 1px solid rgba(245,166,35,0.3);
+    padding: 2px 8px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .card-top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 16px; margin-bottom: 10px;
+  }
+  .card-question { font-size: 14px; color: var(--text); line-height: 1.55; flex: 1; }
+  .prob-badge {
+    font-size: 20px; font-weight: 500; font-family: 'IBM Plex Mono', monospace;
+    white-space: nowrap; flex-shrink: 0; line-height: 1; padding-top: 2px;
+  }
+  .prob-green { color: var(--green); }
+  .prob-amber { color: var(--amber); }
+  .prob-red   { color: var(--red); }
+
+  .outcomes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .outcome-chip {
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text2);
+  }
+  .outcome-chip.top { border-color: rgba(31,203,138,0.4); color: var(--green); background: var(--green-dim); }
+  .outcome-chip.low { border-color: rgba(255,84,84,0.3);  color: var(--red);   background: var(--red-dim); }
+
+  .prob-track { height: 2px; background: var(--surface2); border-radius: 2px; margin-bottom: 12px; overflow: hidden; }
+  .prob-fill  { height: 100%; border-radius: 2px; }
+
+  .card-footer { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .meta-tag {
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--text3); display: flex; align-items: center; gap: 4px;
+  }
+  .deadline-tag {
+    font-size: 11px; font-weight: 500; font-family: 'IBM Plex Mono', monospace;
+    padding: 3px 9px; border-radius: 6px;
+  }
+  .deadline-urgent { background: var(--red-dim);   color: var(--red); }
+  .deadline-soon   { background: var(--amber-dim); color: var(--amber); }
+  .deadline-normal { background: var(--green-dim); color: var(--green); }
+  .ext-icon { margin-left: auto; opacity: 0; transition: opacity 0.15s; color: var(--text3); font-size: 13px; }
+  .market-card:hover .ext-icon { opacity: 1; }
+
+  /* ── STATE BOXES ── */
+  .state-box { text-align: center; padding: 60px 20px; }
+  .spinner { display: inline-flex; gap: 6px; margin-bottom: 16px; }
+  .spinner span {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    animation: bounce 1.2s ease-in-out infinite;
+  }
+  .spinner span:nth-child(2) { animation-delay: 0.15s; }
+  .spinner span:nth-child(3) { animation-delay: 0.30s; }
+  @keyframes bounce { 0%,80%,100%{opacity:0.2;transform:translateY(0)} 40%{opacity:1;transform:translateY(-6px)} }
+  .state-title { font-size: 14px; color: var(--text2); }
+  .state-sub { font-size: 12px; color: var(--text3); margin-top: 6px; font-family: 'IBM Plex Mono', monospace; }
+  .retry-btn {
+    margin-top: 20px; font-size: 13px; padding: 8px 20px;
+    border-radius: var(--radius); border: 1px solid var(--border2);
+    background: transparent; color: var(--text2); cursor: pointer; transition: all 0.15s;
+  }
+  .retry-btn:hover { background: var(--surface2); color: var(--text); }
+
+  /* ── TOAST ── */
+  #toast-container {
+    position: fixed; bottom: 24px; right: 24px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 9999; pointer-events: none;
+  }
+  .toast {
+    background: var(--surface2); border: 1px solid rgba(245,166,35,0.4);
+    border-radius: var(--radius-lg); padding: 14px 18px; max-width: 340px;
+    pointer-events: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    animation: toastIn 0.25s ease;
+  }
+  @keyframes toastIn  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  .toast.out { animation: toastOut 0.25s ease forwards; }
+  @keyframes toastOut { to{opacity:0;transform:translateY(12px)} }
+  .toast-label {
+    font-size: 10px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--amber); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;
+  }
+  .toast-q   { font-size: 13px; color: var(--text); line-height: 1.4; margin-bottom: 6px; }
+  .toast-det { font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--text2); }
+
+  @media (max-width: 700px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    header { padding: 0 16px; }
+    main   { padding: 20px 16px 60px; }
+    .status-pill span:last-child { display: none; }
+  }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a class="logo" href="#">
+      <div class="logo-icon">PM</div>
+      <span class="logo-name">Poly<span>Watch</span></span>
+    </a>
+    <div class="header-right">
+      <div class="status-pill">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">연결 중...</span>
+      </div>
+      <button class="icon-btn" id="bell-btn" onclick="toggleAlerts()">
+        🔔 <span id="bell-label">알람 켜기</span>
+      </button>
+      <button class="icon-btn" id="refresh-btn" onclick="loadMarkets()">↺ 새로고침</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="alert-bar"></div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">활성 마켓</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-sub">불러온 마켓 수</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">24h 이내 마감</div>
+      <div class="stat-value red" id="stat-urgent">—</div>
+      <div class="stat-sub">매우 임박</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">고확률 90%+</div>
+      <div class="stat-value green" id="stat-high">—</div>
+      <div class="stat-sub">거의 확실</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">플립 감지</div>
+      <div class="stat-value amber" id="stat-flips">0</div>
+      <div class="stat-sub">이번 세션 누적</div>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="tab-btn active" data-tab="urgent" onclick="switchTab(this)">🔴 24h 마감</button>
+    <button class="tab-btn" data-tab="high"    onclick="switchTab(this)">🟢 90%+ 고확률</button>
+    <button class="tab-btn" data-tab="both"    onclick="switchTab(this)">⚡ 임박+고확률</button>
+    <button class="tab-btn amber-tab" data-tab="flipped" onclick="switchTab(this)">⚠️ 플립 감지</button>
+    <button class="tab-btn" data-tab="all"     onclick="switchTab(this)">전체</button>
+    <div class="filter-sep"></div>
+    <select class="sort-select" id="sort-select" onchange="renderMarkets()">
+      <option value="deadline">마감 빠른 순</option>
+      <option value="prob-desc">확률 높은 순</option>
+      <option value="prob-asc">확률 낮은 순</option>
+      <option value="volume">거래량 많은 순</option>
+    </select>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title" id="section-label">24시간 이내 마감</span>
+    <span class="count-badge" id="count-badge">—</span>
+  </div>
+  <div id="market-container">
+    <div class="state-box">
+      <div class="spinner"><span></span><span></span><span></span></div>
+      <div class="state-title">Polymarket 데이터 불러오는 중</div>
+      <div class="state-sub">gamma-api.polymarket.com</div>
+    </div>
+  </div>
+</main>
+
+<div id="toast-container"></div>
+
+<script>
+/* ─ CONFIG ─ */
+const HIGH_PROB       = 90;   // 고확률 기준 (%)
+const URGENT_HOURS    = 24;   // 마감 임박 기준 (시간)
+const FLIP_THRESHOLD  = 10;   // 플립 감지 변동폭 (%)
+const REFRESH_MS      = 5 * 60 * 1000; // 5분
+
+/* ─ STATE ─ */
+let allMarkets  = [];
+let currentTab  = 'urgent';
+let alertsOn    = false;
+let prevProbs   = {};    // id → { topIdx, maxProb }
+let flippedIds  = new Set();
+let flipLog     = [];
+let totalFlips  = 0;
+let isFirst     = true;
+
+const tabLabels = {
+  urgent : '24시간 이내 마감',
+  high   : `고확률 마켓 (${HIGH_PROB}%+)`,
+  both   : `24h 마감 & ${HIGH_PROB}%+ 동시`,
+  flipped: '확률 플립 감지',
+  all    : '전체 마켓'
+};
+
+/* ─ UTILS ─ */
+const tryParse = s => { if (!s) return null; if (Array.isArray(s)) return s; try { return JSON.parse(s); } catch { return null; } };
+const getProbs = m => (tryParse(m.outcomePrices) || []).map(p => parseFloat(p) * 100);
+const getMax   = ps => ps.length ? Math.max(...ps) : null;
+const getTopI  = ps => ps.length ? ps.reduce((b, p, i) => p > ps[b] ? i : b, 0) : -1;
+const fmtTime  = d  => `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+const fmtVol   = v  => {
+  if (!v) return null;
+  const n = parseFloat(v);
+  return n >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M' : n >= 1e3 ? '$'+Math.round(n/1e3)+'K' : '$'+Math.round(n);
+};
+
+function timeLeft(str) {
+  const diff  = new Date(str) - new Date();
+  if (diff <= 0) return { text: '마감됨',                          cls: 'deadline-urgent', cardCls: 'urgent', hours: -1 };
+  const hours = diff / 3600000;
+  const days  = Math.floor(hours / 24);
+  const h     = Math.floor(hours % 24);
+  if (hours <  1) return { text: `${Math.floor(hours*60)}분 남음`, cls: 'deadline-urgent', cardCls: 'urgent', hours };
+  if (hours < 24) return { text: `${Math.floor(hours)}시간 남음`,  cls: 'deadline-urgent', cardCls: 'urgent', hours };
+  if (hours < 48) return { text: `${days}일 ${h}시간 남음`,        cls: 'deadline-soon',   cardCls: 'soon',   hours };
+  if (hours <168) return { text: `${days}일 남음`,                 cls: 'deadline-soon',   cardCls: 'soon',   hours };
+  return               { text: `${days}일 남음`,                   cls: 'deadline-normal', cardCls: '',       hours };
+}
+
+const probCls   = p => p >= HIGH_PROB ? 'prob-green' : p >= 60 ? 'prob-amber' : 'prob-red';
+const fillColor = p => p >= HIGH_PROB ? '#1fcb8a'    : p >= 60 ? '#f5a623'    : '#ff5454';
+
+/* ─ FLIP DETECTION ─ */
+function detectFlips(markets) {
+  if (isFirst) {
+    markets.forEach(m => { const ps = getProbs(m); prevProbs[m.id] = { topIdx: getTopI(ps), maxProb: getMax(ps) }; });
+    isFirst = false;
+    return;
+  }
+  markets.forEach(m => {
+    const ps      = getProbs(m);
+    const newTop  = getTopI(ps);
+    const newMax  = getMax(ps);
+    const prev    = prevProbs[m.id];
+    if (!prev) { prevProbs[m.id] = { topIdx: newTop, maxProb: newMax }; return; }
+
+    const outcomes   = tryParse(m.outcomes) || [];
+    const topChanged = newTop !== prev.topIdx && newTop >= 0 && prev.topIdx >= 0;
+    const bigMove    = Math.abs((newMax||0) - (prev.maxProb||0)) >= FLIP_THRESHOLD;
+
+    if (topChanged || bigMove) {
+      flippedIds.add(m.id);
+      totalFlips++;
+      document.getElementById('stat-flips').textContent = totalFlips;
+
+      const entry = {
+        id      : m.id,
+        question: m.question,
+        from    : `${outcomes[prev.topIdx]||'?'} ${prev.maxProb !== null ? Math.round(prev.maxProb) : '?'}%`,
+        to      : `${outcomes[newTop]||'?'} ${newMax !== null ? Math.round(newMax) : '?'}%`,
+        time    : new Date(),
+        slug    : m.slug || m.id
+      };
+      flipLog.unshift(entry);
+      if (flipLog.length > 20) flipLog.pop();
+      renderAlertBar();
+      if (alertsOn) fireAlert(entry);
+    }
+    prevProbs[m.id] = { topIdx: newTop, maxProb: newMax };
+  });
+}
+
+/* ─ ALERT BANNER ─ */
+function renderAlertBar() {
+  const bar = document.getElementById('alert-bar');
+  if (!flipLog.length) { bar.innerHTML = ''; return; }
+  const items = flipLog.slice(0,5).map(f => `
+    <div class="alert-item">
+      <div class="alert-item-q">${f.question}</div>
+      <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">
+        ${f.from}<span class="flip-arrow">→</span>${f.to}
+      </span>
+      <div class="alert-time">${fmtTime(f.time)}</div>
+    </div>`).join('');
+  bar.innerHTML = `<div class="alert-banner">
+    <div class="alert-header">
+      <div class="alert-title">⚠ 확률 플립 감지 (${flipLog.length}건)</div>
+      <button class="alert-clear" onclick="clearFlips()">지우기</button>
+    </div>
+    <div class="alert-list">${items}</div>
+  </div>`;
+}
+
+function clearFlips() {
+  flipLog = []; flippedIds.clear();
+  document.getElementById('alert-bar').innerHTML = '';
+  renderMarkets();
+}
+
+/* ─ FIRE ALERT (toast + push) ─ */
+function fireAlert(entry) {
+  /* in-page toast */
+  const c   = document.getElementById('toast-container');
+  const div = document.createElement('div');
+  div.className = 'toast';
+  div.innerHTML = `
+    <div class="toast-label">⚠ 확률 플립 감지</div>
+    <div class="toast-q">${entry.question}</div>
+    <div class="toast-det">${entry.from} <span style="color:var(--amber)">→</span> ${entry.to}</div>`;
+  c.appendChild(div);
+  setTimeout(() => { div.classList.add('out'); setTimeout(() => div.remove(), 300); }, 6000);
+
+  /* browser push notification */
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('⚠️ 폴리마켓 확률 플립!', {
+      body: `${entry.question}\n${entry.from} → ${entry.to}`,
+      icon: 'https://polymarket.com/favicon.ico'
+    });
+  }
+}
+
+/* ─ ALERTS TOGGLE ─ */
+async function toggleAlerts() {
+  alertsOn = !alertsOn;
+  const btn   = document.getElementById('bell-btn');
+  const label = document.getElementById('bell-label');
+  if (alertsOn) {
+    btn.classList.add('bell-on');
+    label.textContent = '알람 켜짐';
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  } else {
+    btn.classList.remove('bell-on');
+    label.textContent = '알람 켜기';
+  }
+}
+
+/* ─ TAB / RENDER ─ */
+function switchTab(btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentTab = btn.dataset.tab;
+  document.getElementById('section-label').textContent = tabLabels[currentTab];
+  renderMarkets();
+}
+
+function renderMarkets() {
+  const sort = document.getElementById('sort-select').value;
+  let ms = [...allMarkets];
+
+  if (currentTab === 'urgent') {
+    ms = ms.filter(m => { const t = timeLeft(m.endDate); return t.hours >= 0 && t.hours < URGENT_HOURS; });
+  } else if (currentTab === 'high') {
+    ms = ms.filter(m => { const p = getMax(getProbs(m)); return p !== null && p >= HIGH_PROB; });
+  } else if (currentTab === 'both') {
+    ms = ms.filter(m => {
+      const t = timeLeft(m.endDate); const p = getMax(getProbs(m));
+      return t.hours >= 0 && t.hours < URGENT_HOURS && p !== null && p >= HIGH_PROB;
+    });
+  } else if (currentTab === 'flipped') {
+    ms = ms.filter(m => flippedIds.has(m.id));
+  }
+
+  ms.sort((a, b) => {
+    if (sort === 'deadline')   return new Date(a.endDate) - new Date(b.endDate);
+    const pa = getMax(getProbs(a))||0, pb = getMax(getProbs(b))||0;
+    if (sort === 'prob-desc')  return pb - pa;
+    if (sort === 'prob-asc')   return pa - pb;
+    if (sort === 'volume')     return (parseFloat(b.volume)||0) - (parseFloat(a.volume)||0);
+    return 0;
+  });
+
+  document.getElementById('count-badge').textContent = ms.length + '개';
+
+  const emptyMsg = {
+    flipped: '이번 세션에서 아직 플립이 감지되지 않았습니다.<br><small style="color:var(--text3)">5분마다 자동 체크합니다</small>',
+    urgent : '24시간 이내 마감 마켓이 없습니다',
+    both   : '동시 조건을 만족하는 마켓이 없습니다',
+    high   : `${HIGH_PROB}% 이상 확률 마켓이 없습니다`,
+    all    : '마켓이 없습니다'
+  };
+  if (!ms.length) {
+    document.getElementById('market-container').innerHTML =
+      `<div class="state-box"><div class="state-title">${emptyMsg[currentTab]||'—'}</div></div>`;
+    return;
+  }
+
+  const html = ms.slice(0, 60).map(m => {
+    const probs    = getProbs(m);
+    const outcomes = tryParse(m.outcomes) || [];
+    const tl       = timeLeft(m.endDate);
+    const maxP     = getMax(probs);
+    const topI     = getTopI(probs);
+    const isFlip   = flippedIds.has(m.id);
+    const probDisp = maxP !== null ? Math.round(maxP) + '%' : '—';
+    const fillW    = maxP !== null ? Math.round(maxP) : 0;
+    const fc       = maxP !== null ? fillColor(maxP)  : '#888';
+    const pc       = maxP !== null ? probCls(maxP)    : 'prob-amber';
+    const slug     = m.slug || m.id || '';
+    const href     = slug ? `https://polymarket.com/event/${slug}` : 'https://polymarket.com';
+    const vol      = fmtVol(m.volume);
+    const liq      = fmtVol(m.liquidity);
+
+    const chips = outcomes.slice(0,5).map((o,i) => {
+      const p  = probs[i] !== undefined ? Math.round(probs[i]) : 0;
+      const cl = i === topI ? 'top' : p < 10 ? 'low' : '';
+      return `<span class="outcome-chip ${cl}">${o} ${p}%</span>`;
+    }).join('');
+
+    return `<a class="market-card ${tl.cardCls}${isFlip?' flipped':''}"
+        href="${href}" target="_blank" rel="noopener">
+      ${isFlip ? '<div class="flip-tag">⚠ 확률 플립 감지됨</div>' : ''}
+      <div class="card-top">
+        <div class="card-question">${m.question||'—'}</div>
+        <div class="prob-badge ${pc}">${probDisp}</div>
+      </div>
+      <div class="outcomes">${chips}</div>
+      <div class="prob-track"><div class="prob-fill" style="width:${fillW}%;background:${fc}"></div></div>
+      <div class="card-footer">
+        <span class="deadline-tag ${tl.cls}">${tl.text}</span>
+        ${vol ? `<span class="meta-tag">▲ ${vol}</span>` : ''}
+        ${liq ? `<span class="meta-tag">💧 ${liq}</span>` : ''}
+        <span class="ext-icon">↗</span>
+      </div>
+    </a>`;
+  }).join('');
+
+  document.getElementById('market-container').innerHTML = `<div class="market-list">${html}</div>`;
+}
+
+/* ─ LOAD ─ */
+const API_URL = 'https://gamma-api.polymarket.com/markets?closed=false&active=true&order=endDate&ascending=true&limit=200';
+
+// 각 프록시마다 fetch 방식이 달라서 개별 처리
+const PROXY_ATTEMPTS = [
+  // 1) 직접 호출 (배포 환경)
+  async (url) => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('direct fail');
+    return res.json();
+  },
+  // 2) allorigins raw — JSON을 그대로 반환
+  async (url) => {
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('allorigins fail');
+    return res.json();
+  },
+  // 3) corsproxy.io
+  async (url) => {
+    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('corsproxy fail');
+    return res.json();
+  },
+  // 4) allorigins get (wrapped)
+  async (url) => {
+    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('allorigins-get fail');
+    const j = await res.json();
+    return JSON.parse(j.contents);
+  },
+  // 5) thingproxy
+  async (url) => {
+    const res = await fetch(`https://thingproxy.freeboard.io/fetch/${url}`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('thingproxy fail');
+    return res.json();
+  },
+];
+
+async function fetchWithProxy(url) {
+  const errors = [];
+  for (const attempt of PROXY_ATTEMPTS) {
+    try {
+      const data = await attempt(url);
+      if (Array.isArray(data) && data.length > 0) return data;
+    } catch (e) { errors.push(e.message); }
+  }
+  throw new Error('모든 프록시 실패: ' + errors.join(' / '));
+}
+
+async function loadMarkets() {
+  const btn = document.getElementById('refresh-btn');
+  const dot = document.getElementById('status-dot');
+  const stx = document.getElementById('status-text');
+  btn.disabled = true;
+  dot.className = 'status-dot';
+  stx.textContent = '불러오는 중...';
+
+  try {
+    const data = await fetchWithProxy(API_URL);
+
+    allMarkets = data.filter(m => m.endDate && new Date(m.endDate) > new Date());
+    detectFlips(allMarkets);
+
+    const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours >= 0 && t.hours < URGENT_HOURS; }).length;
+    const highN   = allMarkets.filter(m => { const p = getMax(getProbs(m)); return p !== null && p >= HIGH_PROB; }).length;
+
+    document.getElementById('stat-total').textContent  = allMarkets.length;
+    document.getElementById('stat-urgent').textContent = urgentN;
+    document.getElementById('stat-high').textContent   = highN;
+
+    const now = new Date();
+    dot.className   = 'status-dot live';
+    stx.textContent = `업데이트 ${fmtTime(now)}`;
+    renderMarkets();
+  } catch (e) {
+    dot.className   = 'status-dot error';
+    stx.textContent = '오류';
+    document.getElementById('market-container').innerHTML = `
+      <div class="state-box">
+        <div class="state-title">데이터를 불러오지 못했습니다</div>
+        <div class="state-sub">${e.message}</div>
+        <button class="retry-btn" onclick="loadMarkets()">다시 시도</button>
+      </div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+loadMarkets();
+setInterval(loadMarkets, REFRESH_MS);
+</script>
+</body>
+</html>
