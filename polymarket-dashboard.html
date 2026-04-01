@@ -628,50 +628,41 @@ function renderMarkets() {
 /* ─ LOAD ─ */
 const API_URL = 'https://gamma-api.polymarket.com/markets?closed=false&active=true&order=endDate&ascending=true&limit=200';
 
-// 각 프록시마다 fetch 방식이 달라서 개별 처리
-const PROXY_ATTEMPTS = [
-  // 1) 직접 호출 (배포 환경)
-  async (url) => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error('direct fail');
-    return res.json();
-  },
-  // 2) allorigins raw — JSON을 그대로 반환
-  async (url) => {
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('allorigins fail');
-    return res.json();
-  },
-  // 3) corsproxy.io
-  async (url) => {
-    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('corsproxy fail');
-    return res.json();
-  },
-  // 4) allorigins get (wrapped)
-  async (url) => {
-    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('allorigins-get fail');
-    const j = await res.json();
-    return JSON.parse(j.contents);
-  },
-  // 5) thingproxy
-  async (url) => {
-    const res = await fetch(`https://thingproxy.freeboard.io/fetch/${url}`, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('thingproxy fail');
-    return res.json();
-  },
-];
+async function tryFetch(proxyUrl, wrapFn) {
+  const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+  if (!res.ok) throw new Error('status ' + res.status);
+  const json = await res.json();
+  return wrapFn ? wrapFn(json) : json;
+}
 
 async function fetchWithProxy(url) {
+  const enc = encodeURIComponent(url);
+  const attempts = [
+    // 1) 직접
+    () => tryFetch(url),
+    // 2) corsproxy.io — ?URL 형식 (인코딩 없음)
+    () => tryFetch(`https://corsproxy.io/?${url}`),
+    // 3) allorigins raw
+    () => tryFetch(`https://api.allorigins.win/raw?url=${enc}`),
+    // 4) codetabs
+    () => tryFetch(`https://api.codetabs.com/v1/proxy?quest=${enc}`),
+    // 5) allorigins get (wrapped)
+    () => tryFetch(`https://api.allorigins.win/get?url=${enc}`, j => JSON.parse(j.contents)),
+    // 6) corsproxy.io encoded
+    () => tryFetch(`https://corsproxy.io/?${enc}`),
+    // 7) jsonp.afeld
+    () => tryFetch(`https://jsonp.afeld.me/?url=${enc}`, j => j),
+  ];
+
   const errors = [];
-  for (const attempt of PROXY_ATTEMPTS) {
+  for (const attempt of attempts) {
     try {
-      const data = await attempt(url);
+      const data = await attempt();
       if (Array.isArray(data) && data.length > 0) return data;
+      errors.push('empty response');
     } catch (e) { errors.push(e.message); }
   }
-  throw new Error('모든 프록시 실패: ' + errors.join(' / '));
+  throw new Error('모든 프록시 실패 (' + errors.slice(0,3).join(', ') + ')');
 }
 
 async function loadMarkets() {
