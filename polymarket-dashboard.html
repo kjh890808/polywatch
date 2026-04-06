@@ -369,11 +369,11 @@ function renderMarkets() {
   let ms = [...allMarkets];
 
   if (currentTab === 'urgent') {
-    ms = ms.filter(m => { const t = timeLeft(m.endDate); return t.hours <= URGENT_HOURS; });
+    ms = ms.filter(m => { const t = timeLeft(m.endDate); return t.hours > 0 && t.hours <= URGENT_HOURS; });
   } else if (currentTab === 'high') {
     ms = ms.filter(m => { const p = getMax(getProbs(m)); return p !== null && p >= HIGH_PROB; });
   } else if (currentTab === 'both') {
-    ms = ms.filter(m => { const t = timeLeft(m.endDate); const p = getMax(getProbs(m)); return t.hours <= URGENT_HOURS && p !== null && p >= HIGH_PROB; });
+    ms = ms.filter(m => { const t = timeLeft(m.endDate); const p = getMax(getProbs(m)); return t.hours > 0 && t.hours <= URGENT_HOURS && p !== null && p >= HIGH_PROB; });
   } else if (currentTab === 'flipped') {
     ms = ms.filter(m => flippedIds.has(m.id));
   }
@@ -404,13 +404,10 @@ function renderMarkets() {
     const isFlip = flippedIds.has(m.id);
     const probDisp = maxP !== null ? Math.round(maxP) + '%' : '—';
     const fillW  = maxP !== null ? Math.round(maxP) : 0;
-    const eventSlug  = (m.events && m.events[0] && m.events[0].slug) || '';
-    const marketSlug = m.slug || '';
+    const eventSlug = (m.events && m.events[0] && m.events[0].slug) || m.slug || '';
     const href = eventSlug
-      ? `https://polymarket.com/event/${eventSlug}/${marketSlug}`
-      : marketSlug
-        ? `https://polymarket.com/event/${marketSlug}`
-        : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
+      ? `https://polymarket.com/event/${eventSlug}`
+      : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
     const vol    = fmtVol(m.volume), liq = fmtVol(m.liquidity);
 
     const chips = outcomes.slice(0,5).map((o,i) => {
@@ -453,7 +450,7 @@ async function loadMarkets() {
     allMarkets = data.map(normalizeMarket);
     detectFlips(allMarkets);
 
-    const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours <= URGENT_HOURS; }).length;
+    const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours > 0 && t.hours <= URGENT_HOURS; }).length;
     const highN   = allMarkets.filter(m => { const p = getMax(getProbs(m)); return p !== null && p >= HIGH_PROB; }).length;
 
     document.getElementById('stat-total').textContent  = allMarkets.length;
