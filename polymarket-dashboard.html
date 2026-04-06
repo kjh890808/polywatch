@@ -448,9 +448,19 @@ async function loadMarkets() {
   stx.textContent = '불러오는 중...';
 
   try {
-    const url = `${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=50`;
-    const data = await fetchMarkets(url);
-    allMarkets = data.map(normalizeMarket);
+    // 50개씩 6페이지 병렬 fetch → 최대 300개
+    const offsets = [0, 50, 100, 150, 200, 250];
+    const pages = await Promise.allSettled(
+      offsets.map(off => fetchMarkets(`${API_BASE}?closed=false&active=true&order=endDate&ascending=true&limit=50&offset=${off}`))
+    );
+    const rawData = pages
+      .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
+      .flatMap(r => r.value);
+    const seen = new Set();
+    allMarkets = rawData.map(normalizeMarket).filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id); return true;
+    });
     detectFlips(allMarkets);
 
     const urgentN = allMarkets.filter(m => { const t = timeLeft(m.endDate); return t.hours <= URGENT_HOURS; }).length;
