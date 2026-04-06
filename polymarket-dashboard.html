@@ -697,6 +697,7 @@ const TOTAL_TARGET = 300;
 
 // Cloudflare Worker 전용 프록시
 const CF_WORKER = 'https://polywatch-proxy.gallad456.workers.dev';
+const API_BASE = 'https://gamma-api.polymarket.com/markets';
 
 async function fetchWithProxy(url) {
   // Worker URL로 변환: /markets?... 형태로 경로만 전달
