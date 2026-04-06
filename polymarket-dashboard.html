@@ -244,6 +244,28 @@ function timeLeft(str) {
 const probCls   = p => p >= HIGH_PROB ? 'prob-green' : p >= 60 ? 'prob-amber' : 'prob-red';
 const fillColor = p => p >= HIGH_PROB ? '#1fcb8a' : p >= 60 ? '#f5a623' : '#ff5454';
 
+/* ─ TRANSLATION ─ */
+const transCache = {};
+async function translateQ(id, text) {
+  if (transCache[id]) return transCache[id];
+  try {
+    const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=' + encodeURIComponent(text);
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const j = await res.json();
+    const t = j[0].map(x => x && x[0]).filter(Boolean).join('');
+    if (t && t !== text) { transCache[id] = t; return t; }
+  } catch {}
+  return text;
+}
+async function translateAll(markets) {
+  for (let i = 0; i < markets.length; i += 8) {
+    const batch = markets.slice(i, i + 8);
+    await Promise.all(batch.map(m => translateQ(m.id, m.question).then(t => { transCache[m.id] = t; })));
+    renderMarkets();
+    await new Promise(r => setTimeout(r, 350));
+  }
+}
+
 /* ─ FETCH ─ */
 async function fetchMarkets(url) {
   const parsed = new URL(url);
@@ -382,8 +404,13 @@ function renderMarkets() {
     const isFlip = flippedIds.has(m.id);
     const probDisp = maxP !== null ? Math.round(maxP) + '%' : '—';
     const fillW  = maxP !== null ? Math.round(maxP) : 0;
-    const slug   = m.slug || '';
-    const href   = slug ? `https://polymarket.com/event/${slug}` : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
+    const eventSlug  = (m.events && m.events[0] && m.events[0].slug) || '';
+    const marketSlug = m.slug || '';
+    const href = eventSlug
+      ? `https://polymarket.com/event/${eventSlug}/${marketSlug}`
+      : marketSlug
+        ? `https://polymarket.com/event/${marketSlug}`
+        : `https://polymarket.com/search?q=${encodeURIComponent((m.question||'').slice(0,80))}`;
     const vol    = fmtVol(m.volume), liq = fmtVol(m.liquidity);
 
     const chips = outcomes.slice(0,5).map((o,i) => {
@@ -394,7 +421,7 @@ function renderMarkets() {
     return `<a class="market-card ${tl.cardCls}${isFlip?' flipped':''}" href="${href}" target="_blank" rel="noopener">
       ${isFlip ? '<div class="flip-tag">⚠ 확률 플립 감지됨</div>' : ''}
       <div class="card-top">
-        <div class="card-question">${m.question||'—'}</div>
+        <div class="card-question">${transCache[m.id] || m.question || '—'}</div>
         <div class="prob-badge ${maxP!==null?probCls(maxP):'prob-amber'}">${probDisp}</div>
       </div>
       <div class="outcomes">${chips}</div>
@@ -436,6 +463,7 @@ async function loadMarkets() {
     dot.className = 'status-dot live';
     stx.textContent = `업데이트 ${fmtTime(new Date())}`;
     renderMarkets();
+    translateAll(allMarkets);
   } catch(e) {
     dot.className = 'status-dot error';
     stx.textContent = '오류';
